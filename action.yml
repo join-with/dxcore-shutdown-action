@@ -1,0 +1,55 @@
+name: "DxCore Shutdown"
+description: "Gracefully shut down the DxCore coordinator"
+
+inputs:
+  coordinator-url:
+    description: "URL of the running DxCore coordinator"
+    required: true
+  token:
+    description: "Authentication token matching the coordinator"
+    required: true
+  version:
+    description: "Release tag to download (e.g. v0.1.0). Defaults to latest."
+    required: false
+    default: "latest"
+
+branding:
+  icon: "power"
+  color: "red"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine version
+      id: version
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          TAG=$(gh release view --repo join-with/dxcore --json tagName -q '.tagName') || { echo "::error::No releases found in join-with/dxcore"; exit 1; }
+        else
+          TAG="${{ inputs.version }}"
+        fi
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Download CLI binary
+      shell: bash
+      run: |
+        gh release download "${{ steps.version.outputs.tag }}" \
+          --repo join-with/dxcore \
+          --pattern "dxcore-agents-cli-linux-x86_64" \
+          --output dxcore-cli
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Make binary executable
+      shell: bash
+      run: chmod +x dxcore-cli
+
+    - name: Shutdown coordinator
+      shell: bash
+      run: |
+        ./dxcore-cli ci shutdown \
+          --coordinator="${{ inputs.coordinator-url }}" \
+          --token=${{ inputs.token }}
